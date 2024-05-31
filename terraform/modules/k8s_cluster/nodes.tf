@@ -13,8 +13,11 @@ locals {
     cidrhost(var.node_network.cidr, i + var.node_network.start_host + var.control_plane_node_count)
   ]
 
+  tmp_cluster_config_file       = "/tmp/${var.cluster_name}_kubeconfig"
   tmp_node_ssh_private_key_file = "/tmp/${var.cluster_name}_node_ssh_private_key"
-  node_ssh_private_key_file     = (var.save_node_ssh_key.enabled ? var.save_node_ssh_key.filename :
+
+  cluster_kubeconfig_file   = var.save_kubeconfig.enabled ? var.save_kubeconfig.filename : local.tmp_cluster_config_file
+  node_ssh_private_key_file = (var.save_node_ssh_key.enabled ? var.save_node_ssh_key.filename :
     local.tmp_node_ssh_private_key_file)
 }
 
@@ -113,6 +116,8 @@ resource "ansible_playbook" "control_plane_init" {
 
   depends_on = [time_sleep.control_plane_init_node]
 }
+
+// cluster secrets
 
 resource "ssh_sensitive_resource" "cluster_kubeconfig" {
   user        = "ubuntu"
@@ -368,7 +373,7 @@ resource "tls_private_key" "node_ssh_key" {
 resource "local_sensitive_file" "cluster_kubeconfig" {
   count    = var.save_kubeconfig.enabled ? 1 : 0
   content  = ssh_sensitive_resource.cluster_kubeconfig.result
-  filename = var.save_kubeconfig.filename
+  filename = local.cluster_kubeconfig_file
 }
 
 resource "local_file" "node_ssh_public_key" {
@@ -379,34 +384,4 @@ resource "local_file" "node_ssh_public_key" {
 resource "local_sensitive_file" "node_ssh_private_key" {
   content  = tls_private_key.node_ssh_key.private_key_openssh
   filename = local.node_ssh_private_key_file
-}
-
-// ====== Outputs ======
-
-output "cluster_token" {
-  value     = local.cluster_token
-  sensitive = true
-}
-
-output "cluster_kubeconfig" {
-  value     = ssh_sensitive_resource.cluster_kubeconfig.result
-  sensitive = true
-}
-
-output "node_ips" {
-  value = concat(local.control_plane_ips, local.worker_node_ips)
-}
-
-output "node_password" {
-  value     = random_password.node_password.result
-  sensitive = true
-}
-
-output "node_public_key" {
-  value = tls_private_key.node_ssh_key.public_key_openssh
-}
-
-output "node_private_key" {
-  value     = tls_private_key.node_ssh_key.private_key_openssh
-  sensitive = true
 }
