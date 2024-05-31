@@ -1,0 +1,4 @@
+loadbalancer_service_name: "service"
+loadbalancer_service_port: 80
+loadbalancer_backend_servers: []
+loadbalancer_balance_algorithm: "roundrobin"

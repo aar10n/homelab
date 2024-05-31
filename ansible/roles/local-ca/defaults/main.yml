@@ -1,0 +1,8 @@
+# local_ca_cert: "---BEGIN CERTIFICATE---\n...\n---END CERTIFICATE---"
+#   OR
+# local_ca_cert_file: "/path/to/local-ca.crt"
+
+local_ca_install_for_k8s: no
+# local_ca_key: "---BEGIN PRIVATE---\n...\n---END PRIVATE---"
+#   OR
+# local_ca_key_file: "/path/to/local-ca.key"

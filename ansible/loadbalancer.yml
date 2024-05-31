@@ -1,0 +1,9 @@
+- hosts: all
+  any_errors_fatal: true
+  become: true
+  tasks:
+    - when: local_ca_cert is defined or local_ca_cert_file is defined
+      import_role:
+        name: local-ca
+    - import_role:
+        name: loadbalancer

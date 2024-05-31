@@ -1,0 +1,79 @@
+---
+- name: Assert that the CA certificate is provided
+  assert:
+    that:
+      - local_ca_cert is defined or local_ca_cert_file is defined
+
+- name: Install the CA certificate (Debian)
+  when: ansible_os_family == 'Debian'
+  block:
+    - name: Install easy-rsa
+      apt:
+        name: easy-rsa
+        state: present
+
+    - name: Ensure /usr/local/share/ca-certificates exists
+      file:
+        path: /usr/local/share/ca-certificates
+        state: directory
+        mode: 0755
+
+    - block:
+        - name: Copy local CA certificate to /usr/local/share/ca-certificates
+          when: local_ca_cert is defined
+          copy:
+            dest: "/usr/local/share/ca-certificates/local-ca.crt"
+            content: "{{ local_ca_cert }}"
+            mode: 0644
+        - name: Copy local CA certificate to /usr/local/share/ca-certificates
+          when: local_ca_cert_file is defined
+          copy:
+            src: "{{ local_ca_cert_file }}"
+            dest: "/usr/local/share/ca-certificates/local-ca.crt"
+            mode: 0644
+
+    - name: Update CA certificates
+      command: update-ca-certificates
+
+
+- name: Install the CA certificate and key for Kubernetes
+  when: local_ca_install_for_k8s
+  block:
+    - name: Assert that the CA key is provided
+      assert:
+        that:
+          - local_ca_key is defined or local_ca_key_file is defined
+
+    - name: Ensure /etc/kubernetes/pki exists
+      file:
+        path: /etc/kubernetes/pki
+        state: directory
+        mode: 0755
+
+    - block:
+        - name: Copy local CA certificate to /etc/kubernetes/pki
+          when: local_ca_cert is defined
+          copy:
+            dest: "/etc/kubernetes/pki/ca.crt"
+            content: "{{ local_ca_cert }}"
+            mode: 0644
+        - name: Copy local CA certificate to /etc/kubernetes/pki
+          when: local_ca_cert_file is defined
+          copy:
+            src: "{{ local_ca_cert_file }}"
+            dest: "/etc/kubernetes/pki/ca.crt"
+            mode: 0644
+
+    - block:
+        - name: Copy local CA key to /etc/kubernetes/pki
+          when: local_ca_key is defined
+          copy:
+            dest: "/etc/kubernetes/pki/ca.key"
+            content: "{{ local_ca_key }}"
+            mode: 0600
+        - name: Copy local CA key to /etc/kubernetes/pki
+          when: local_ca_key_file is defined
+          copy:
+            src: "{{ local_ca_key_file }}"
+            dest: "/etc/kubernetes/pki/ca.key"
+            mode: 0600

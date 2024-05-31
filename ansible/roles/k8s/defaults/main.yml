@@ -1,0 +1,16 @@
+k8s_version: '1.30'
+crio_version: '1.29'
+
+#k8s_cluster_endpoint: ""
+#k8s_cluster_token: ""
+
+# Initial node
+k8s_kubeadm_init: no
+k8s_init_pod_network_cidr: "10.10.0.0/16"
+k8s_init_service_cidr: "10.96.0.0/12"
+
+# Subsequent nodes
+k8s_kubeadm_join: no
+k8s_join_as_master: no # yes to join the control plane
+#k8s_join_discovery_token_ca_cert_hash: ""
+#k8_join_certificate_key: ""

@@ -1,0 +1,136 @@
+---
+- name: Load br_netfilter kernel module
+  modprobe:
+    name: br_netfilter
+    state: present
+
+- name: Load br_netfilter kernel module on boot
+  lineinfile:
+    path: /etc/modules-load.d/br_netfilter.conf
+    line: br_netfilter
+    create: yes
+
+- name: Set IP forwarding
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: 1
+    state: present
+
+- name: Install packages (deb)
+  when: ansible_os_family == 'Debian'
+  block:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install dependencies
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - software-properties-common
+        - gpg
+
+    - name: Create /etc/apt/keyrings/ directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: 0755
+
+    - name: Download Kubernetes and CRI-O repository keys
+      shell:
+        creates: "/etc/apt/keyrings/{{ item.file }}"
+        cmd: "curl -fsSL {{ item.url }} | gpg --dearmor -o /etc/apt/keyrings/{{ item.file }}"
+      loop:
+        - { file: "kubernetes.gpg", url: "{{ _kubernetes_deb_gpg_key_url }}" }
+        - { file: "cri-o.gpg", url: "{{ _crio_deb_gpg_key_url }}" }
+
+    - name: Add Kubernetes and CRI-O repositories
+      copy:
+        dest: "/etc/apt/sources.list.d/{{ item.file }}"
+        content: "{{ item.repo }}"
+      loop:
+          - { file: "kubernetes.list", repo: "{{ _kubernetes_deb_repo }}" }
+          - { file: "cri-o.list", repo: "{{ _crio_deb_repo }}" }
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install Kubernetes and CRI-O packages
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - cri-o
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    - name: Pin Kubernetes and CRI-O packages
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - cri-o
+        - kubelet
+        - kubeadm
+        - kubectl
+
+- name: Enable the crio service
+  service:
+    name: crio
+    enabled: yes
+    state: started
+
+- name: Initialize the Kubernetes cluster
+  when: k8s_kubeadm_init
+  block:
+    - name: Run kubeadm init
+      register: kubeadm_init
+      command:
+        cmd: kubeadm init {{ _kubeadm_init_args }}
+        creates: /etc/kubernetes/admin.conf
+
+    - name: Get the cluster token
+      register: cluster_token
+      shell: kubeadm token list | awk '$4 == "authentication,signing" { print $1; exit; }'
+
+    - name: Get the discovery token ca-cert hash
+      register: discovery_token_ca_cert_hash
+      shell: |
+        openssl x509 -in /etc/kubernetes/pki/ca.crt -noout -pubkey | \
+          openssl rsa -pubin -outform DER 2>/dev/null | sha256sum | \
+          cut -d' ' -f1
+
+    - name: Get the certificate key
+      register: certificate_key
+      shell: kubeadm init phase upload-certs --upload-certs | sed '3q;d'
+
+    - name: Save secrets to /tmp
+      copy:
+        dest: "/tmp/{{ item }}"
+        content: "{{ hostvars[inventory_hostname][item].stdout }}"
+      loop:
+        - cluster_token
+        - discovery_token_ca_cert_hash
+        - certificate_key
+
+- name: Join the Kubernetes cluster
+  when: k8s_kubeadm_join and not k8s_kubeadm_init
+  block:
+    - name: Assert required variables are provided
+      assert:
+        that:
+          - k8s_cluster_endpoint is defined and k8s_cluster_endpoint != ""
+          - k8s_cluster_token is defined and k8s_cluster_token != ""
+          - k8s_join_discovery_token_ca_cert_hash is defined and k8s_join_discovery_token_ca_cert_hash != ""
+          - k8s_join_certificate_key is defined and k8s_join_certificate_key != ""
+
+    - name: Run kubeadm join
+      command:
+        cmd: kubeadm join {{ _kubeadm_join_args }}
+        creates: /etc/kubernetes/kubelet.conf
