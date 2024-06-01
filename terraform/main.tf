@@ -12,10 +12,6 @@ terraform {
       source  = "gavinbunney/kubectl"
       version = "1.14.0"
     }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "2.30.0"
-    }
     local = {
       source  = "hashicorp/local"
       version = "2.5.1"

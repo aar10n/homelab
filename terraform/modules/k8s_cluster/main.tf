@@ -28,6 +28,10 @@ terraform {
       source  = "bpg/proxmox"
       version = "0.57.1"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "3.6.2"
+    }
     ssh = {
       source  = "loafoe/ssh"
       version = "2.7.0"
