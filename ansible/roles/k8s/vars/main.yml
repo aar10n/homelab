@@ -16,7 +16,7 @@ _kubeadm_init_args: >-
 
 _kubeadm_join_args: >-
   {{ k8s_cluster_endpoint }}
-  --token {{ k8s_cluster_token | default('missing') }}
-  --discovery-token-ca-cert-hash {{ k8s_join_discovery_token_ca_cert_hash | default('missing') }} 
-  --certificate-key {{ k8s_join_certificate_key | default('missing') }}
-  {{ k8s_join_as_master | ternary('--control-plane', '') }}
+  --token {{ k8s_cluster_token | default("missing") }}
+  --discovery-token-ca-cert-hash {{ k8s_join_discovery_token_ca_cert_hash | default("missing") }} 
+  --certificate-key {{ k8s_join_certificate_key | default("missing") }}
+  {{ k8s_join_as_master | ternary("--control-plane", "") }}

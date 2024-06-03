@@ -1,0 +1,79 @@
+---
+- name: Install PostgreSQL (Debian/Ubuntu)
+  when: ansible_os_family == "Debian"
+  block:
+    - name: Install prerequisite packages
+      apt:
+        name: "{{ item }}"
+      loop:
+        - acl
+        - gnupg
+        - python3-psycopg2
+        - postgresql-common
+
+    - name: Run the automated apt repository setup
+      shell:
+        creates: /etc/apt/sources.list.d/pgdg.list
+        cmd: yes | /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
+
+    - name: Install packages
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - postgresql-{{ postgresql_version }}
+        - postgresql-client-{{ postgresql_version }}
+
+    - name: Pin the PostgreSQL packages
+      apt:
+        name: "{{ item }}"
+        state: present
+        force: yes
+      loop:
+        - postgresql-{{ postgresql_version }}
+        - postgresql-client-{{ postgresql_version }}
+
+- name: Ensure postgresql service is running
+  service:
+    name: postgresql
+    state: started
+    enabled: true
+
+- name: Copy the postgresql.conf file
+  notify: restart postgresql
+  template:
+    src: postgresql.conf.j2
+    dest: "{{ postgresql_conf_dir }}/postgresql.conf"
+    owner: postgres
+    group: postgres
+    mode: 0644
+
+- name: Update the pg_hba.conf file with host network
+  lineinfile:
+    path: "{{ postgresql_conf_dir }}/pg_hba.conf"
+    state: present
+    line: "host    all             all             {{ _host_cidr }}    scram-sha-256"
+    regexp: "^host\\s+all\\s+all\\s+{{ _host_cidr }}\\s+scram-sha-256"
+
+- name: Setup PostgreSQL users and databases
+  become_user: postgres
+  block:
+    - name: Create the users
+      postgresql_user:
+        name: "{{ item.name }}"
+        password: "{{ item.password }}"
+        state: present
+      loop: "{{ _postgresql_users | list }}"
+
+    - name: Create the databases
+      postgresql_db:
+        name: "{{ item.name }}"
+        owner: "{{ item.owner }}"
+      loop: "{{ _postgresql_databases | list }}"
+
+    - name: Update the user database
+      postgresql_user:
+        name: "{{ item.name }}"
+        password: "{{ item.password }}"
+        db: "{{ item.db }}"
+      loop: "{{ _postgresql_users | list }}"

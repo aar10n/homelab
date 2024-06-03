@@ -5,28 +5,6 @@ variable "proxmox_node" {
   type        = string
 }
 
-variable "proxmox_host" {
-  description = "The hostname of the Proxmox server"
-  type        = string
-}
-
-variable "proxmox_ssh_user" {
-  description = "The ssh user for connecting to Proxmox"
-  type        = string
-}
-
-variable "proxmox_ssh_password" {
-  description = "The ssh password for connecting to Proxmox"
-  sensitive   = true
-  type        = string
-}
-
-variable "proxmox_ssh_agent" {
-  description = "Use the ssh agent for connecting to Proxmox"
-  type        = bool
-  default     = false
-}
-
 // ====== Cluster Options ======
 
 variable "cluster_name" {
@@ -104,6 +82,11 @@ variable "node_memory" {
 variable "node_disk_size" {
   description = "The size of the disk to allocate to each node"
   default     = 10
+}
+
+variable "node_disk_volume" {
+  description = "The name of the storage volume to use for the node disks"
+  default     = "local-lvm"
 }
 
 variable "start_on_boot" {

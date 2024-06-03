@@ -1,0 +1,13 @@
+postgresql_version: "15"
+postgresql_conf_dir: "/etc/postgresql/{{ postgresql_version }}/main"
+postgresql_data_dir: "/var/lib/postgresql/{{ postgresql_version }}/main"
+#postgresql_passw
+
+postgresql_users:
+  - name: root
+    password: root
+    db: default
+
+postgresql_databases:
+  - name: default
+    owner: root

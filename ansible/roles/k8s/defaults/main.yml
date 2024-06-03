@@ -1,5 +1,5 @@
-k8s_version: '1.30'
-crio_version: '1.29'
+k8s_version: "1.30"
+crio_version: "1.29"
 
 #k8s_cluster_endpoint: ""
 #k8s_cluster_token: ""

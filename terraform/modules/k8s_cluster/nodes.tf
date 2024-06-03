@@ -295,9 +295,10 @@ resource "proxmox_virtual_environment_vm" "worker_node" {
   }
 
   disk {
-    interface   = "virtio0"
-    file_format = "raw"
-    size        = var.node_disk_size
+    datastore_id = var.node_disk_volume
+    size         = var.node_disk_size
+    interface    = "virtio0"
+    file_format  = "raw"
   }
 
   serial_device {}

@@ -1,0 +1,3 @@
+_host_cidr: "{{ ansible_default_ipv4.address }}/{{ ansible_default_ipv4.prefix }}"
+_postgresql_users: "{% if postgresql_users is string %}{{ postgresql_users | from_json }}{% else %}{{ postgresql_users }}{% endif %}"
+_postgresql_databases: "{% if postgresql_databases is string %}{{ postgresql_databases | from_json }}{% else %}{{ postgresql_databases }}{% endif %}"
