@@ -6,7 +6,7 @@ module "k8s_cluster" {
   cluster_ip           = "192.168.10.0"
   pod_network_cidr     = "10.244.0.0/16"
   service_network_cidr = "10.96.0.0/12"
-  metallb_address_pool = "192.168.100.0/24"
+  metallb_address_pool = "192.168.100.10-192.168.100.250"
   vm_start_id          = 500
 
   node_network = {
