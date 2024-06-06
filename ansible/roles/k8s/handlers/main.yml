@@ -1,0 +1,6 @@
+---
+- name: restart cri-o
+  service:
+    name: cri-o
+    state: restarted
+    enabled: yes

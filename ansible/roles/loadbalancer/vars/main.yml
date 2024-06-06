@@ -1,6 +1,1 @@
-_loadbalancer_backend_servers: >-
-  {% if loadbalancer_backend_servers is string %}
-  {{ loadbalancer_backend_servers | from_json }}
-  {% else %}
-  {{ loadbalancer_backend_servers }}
-  {% endif %}
+_loadbalancer_backend_servers: "{% if loadbalancer_backend_servers is string %}{{ loadbalancer_backend_servers | from_json }}{% else %}{{ loadbalancer_backend_servers }}{% endif %}"

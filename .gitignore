@@ -1,11 +1,4 @@
 inventory.ini
 
-packer/*.vars.hcl
-terraform/*.tfvars
-terraform/.terraform/
-terraform/.terraform.lock.hcl
-terraform/*.terraform
-terraform/*.tfstate*
-
 *.log
 *.env

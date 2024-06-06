@@ -23,11 +23,11 @@ resource "proxmox_virtual_environment_container" "kube_apiserver_lb" {
   }
 
   cpu {
-    cores = 1
+    cores = var.loadbalancer_instance.cpu
   }
 
   memory {
-    dedicated = 512
+    dedicated = var.loadbalancer_instance.memory
   }
 
   network_interface {
@@ -38,13 +38,13 @@ resource "proxmox_virtual_environment_container" "kube_apiserver_lb" {
   }
 
   operating_system {
-    template_file_id = "local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
+    template_file_id = var.loadbalancer_instance.template
     type             = "ubuntu"
   }
 
   disk {
-    datastore_id = "local-lvm"
-    size         = 8
+    datastore_id = var.loadbalancer_instance.disk_volume
+    size         = var.loadbalancer_instance.disk_size
   }
 
   console {
@@ -52,13 +52,10 @@ resource "proxmox_virtual_environment_container" "kube_apiserver_lb" {
     enabled   = true
     tty_count = 2
   }
-}
 
-resource "time_sleep" "kube_apiserver_lb" {
-  depends_on = [proxmox_virtual_environment_container.kube_apiserver_lb]
-  create_duration = "80s"
-  lifecycle {
-    replace_triggered_by = [proxmox_virtual_environment_container.kube_apiserver_lb]
+  provisioner "local-exec" {
+    when    = create
+    command = "until ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${local.node_ssh_private_key_file} root@${var.cluster_ip} echo 'SSH is ready'; do sleep 5; done"
   }
 }
 
@@ -91,7 +88,7 @@ resource "ansible_playbook" "loadbalancer" {
     local_ca_cert_file = var.cluster_ca_crt_file
   }
 
-  depends_on = [time_sleep.kube_apiserver_lb]
+  depends_on = [proxmox_virtual_environment_container.kube_apiserver_lb]
   lifecycle {
     replace_triggered_by = [null_resource.control_plane_ips_changed]
   }

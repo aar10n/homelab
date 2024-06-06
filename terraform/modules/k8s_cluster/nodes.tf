@@ -6,18 +6,20 @@ locals {
   node_network_bits = tonumber(split("/", var.node_network.cidr)[1])
 
   control_plane_ips = [
-    for i in range(var.control_plane_node_count) : cidrhost(var.node_network.cidr, i + var.node_network.start_host)
+    for i in range(var.control_plane_nodes.count) :
+    cidrhost(var.node_network.cidr, i + var.node_network.start_host)
   ]
   worker_node_ips = [
-    for i in range(var.worker_node_count) :
-    cidrhost(var.node_network.cidr, i + var.node_network.start_host + var.control_plane_node_count)
+    for i in range(var.worker_nodes.count) :
+    cidrhost(var.node_network.cidr, i + var.node_network.start_host + var.control_plane_nodes.count)
   ]
 
   tmp_cluster_config_file       = "/tmp/${var.cluster_name}_kubeconfig"
   tmp_node_ssh_private_key_file = "/tmp/${var.cluster_name}_node_ssh_private_key"
 
-  cluster_kubeconfig_file   = var.save_kubeconfig.enabled ? var.save_kubeconfig.filename : local.tmp_cluster_config_file
-  node_ssh_private_key_file = (var.save_node_ssh_key.enabled ? var.save_node_ssh_key.filename :
+  cluster_kubeconfig_file = (var.kubeconfig_save_file != null ? var.kubeconfig_save_file :
+    local.tmp_cluster_config_file)
+  node_ssh_private_key_file = (var.ssh_key_save_file != null ? var.ssh_key_save_file :
     local.tmp_node_ssh_private_key_file)
 }
 
@@ -60,35 +62,33 @@ resource "proxmox_virtual_environment_vm" "control_plane_init_node" {
   }
 
   cpu {
-    cores = var.node_cpu
+    cores = var.control_plane_nodes.cpu
   }
 
   memory {
-    dedicated = var.node_memory
+    dedicated = var.control_plane_nodes.memory
   }
 
   disk {
-    datastore_id = "local-lvm"
-    file_id      = var.node_image
     interface    = "scsi0"
+    datastore_id = "local-lvm"
+    file_id      = var.control_plane_nodes.image
   }
 
   disk {
-    interface   = "virtio0"
-    file_format = "raw"
-    size        = var.node_disk_size
+    file_format  = "raw"
+    interface    = "virtio0"
+    datastore_id = var.control_plane_nodes.disk_volume
+    size         = var.control_plane_nodes.disk_size
   }
 
   serial_device {}
 
   depends_on = [ansible_playbook.loadbalancer]
-}
 
-resource "time_sleep" "control_plane_init_node" {
-  depends_on = [proxmox_virtual_environment_vm.control_plane_init_node]
-  create_duration = "80s"
-  lifecycle {
-    replace_triggered_by = [proxmox_virtual_environment_vm.control_plane_init_node]
+  provisioner "local-exec" {
+    when    = create
+    command = "until ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${local.node_ssh_private_key_file} ubuntu@${local.control_plane_ips[0]} echo 'SSH is ready'; do sleep 5; done"
   }
 }
 
@@ -114,7 +114,7 @@ resource "ansible_playbook" "control_plane_init" {
     local_ca_install_for_k8s = var.cluster_ca_key_file != null
   }
 
-  depends_on = [time_sleep.control_plane_init_node]
+  depends_on = [proxmox_virtual_environment_vm.control_plane_init_node]
 }
 
 // cluster secrets
@@ -148,7 +148,7 @@ resource "ssh_sensitive_resource" "cluster_certificate_key" {
 //
 
 resource "proxmox_virtual_environment_vm" "control_plane_node" {
-  count = max(0, var.control_plane_node_count - 1)
+  count = max(0, var.control_plane_nodes.count - 1)
   node_name = var.proxmox_node
 
   vm_id       = var.vm_start_id == null ? null : var.vm_start_id + count.index + 2
@@ -183,23 +183,24 @@ resource "proxmox_virtual_environment_vm" "control_plane_node" {
   }
 
   cpu {
-    cores = var.node_cpu
+    cores = var.control_plane_nodes.cpu
   }
 
   memory {
-    dedicated = var.node_memory
+    dedicated = var.control_plane_nodes.memory
   }
 
   disk {
-    datastore_id = "local-lvm"
-    file_id      = var.node_image
     interface    = "scsi0"
+    datastore_id = "local-lvm"
+    file_id      = var.control_plane_nodes.image
   }
 
   disk {
-    interface   = "virtio0"
-    file_format = "raw"
-    size        = var.node_disk_size
+    file_format  = "raw"
+    interface    = "virtio0"
+    datastore_id = var.control_plane_nodes.disk_volume
+    size         = var.control_plane_nodes.disk_size
   }
 
   serial_device {}
@@ -208,18 +209,15 @@ resource "proxmox_virtual_environment_vm" "control_plane_node" {
   lifecycle {
     replace_triggered_by = [proxmox_virtual_environment_vm.control_plane_init_node]
   }
-}
 
-resource "time_sleep" "control_plane_node" {
-  depends_on = [proxmox_virtual_environment_vm.control_plane_node]
-  create_duration = "80s"
-  lifecycle {
-    replace_triggered_by = [proxmox_virtual_environment_vm.control_plane_node]
+  provisioner "local-exec" {
+    when    = create
+    command = "until ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${local.node_ssh_private_key_file} ubuntu@${local.control_plane_ips[count.index+1]} echo 'SSH is ready'; do sleep 5; done"
   }
 }
 
 resource "ansible_playbook" "control_plane_join" {
-  count = max(0, var.control_plane_node_count - 1)
+  count = max(0, var.control_plane_nodes.count - 1)
   playbook   = "../ansible/k8s.yml"
   replayable = false
 
@@ -238,7 +236,7 @@ resource "ansible_playbook" "control_plane_join" {
     local_ca_cert_file = var.cluster_ca_crt_file
   }
 
-  depends_on = [time_sleep.control_plane_node]
+  depends_on = [proxmox_virtual_environment_vm.control_plane_node]
 }
 
 //
@@ -246,10 +244,10 @@ resource "ansible_playbook" "control_plane_join" {
 //
 
 resource "proxmox_virtual_environment_vm" "worker_node" {
-  count     = var.worker_node_count
+  count     = var.worker_nodes.count
   node_name = var.proxmox_node
 
-  vm_id       = var.vm_start_id == null ? null : var.vm_start_id + var.control_plane_node_count + 1 + count.index
+  vm_id       = var.vm_start_id == null ? null : var.vm_start_id + var.worker_id_offset + count.index
   name        = "${var.cluster_name}-worker-${count.index}"
   description = "Worker node for ${var.cluster_name} cluster"
   on_boot     = var.start_on_boot
@@ -281,24 +279,24 @@ resource "proxmox_virtual_environment_vm" "worker_node" {
   }
 
   cpu {
-    cores = var.node_cpu
+    cores = var.worker_nodes.cpu
   }
 
   memory {
-    dedicated = var.node_memory
+    dedicated = var.worker_nodes.memory
   }
 
   disk {
-    datastore_id = "local-lvm"
-    file_id      = var.node_image
     interface    = "scsi0"
+    datastore_id = "local-lvm"
+    file_id      = var.worker_nodes.image
   }
 
   disk {
-    datastore_id = var.node_disk_volume
-    size         = var.node_disk_size
-    interface    = "virtio0"
     file_format  = "raw"
+    interface    = "virtio0"
+    datastore_id = var.worker_nodes.disk_volume
+    size         = var.worker_nodes.disk_size
   }
 
   serial_device {}
@@ -307,18 +305,15 @@ resource "proxmox_virtual_environment_vm" "worker_node" {
   lifecycle {
     replace_triggered_by = [proxmox_virtual_environment_vm.control_plane_node]
   }
-}
 
-resource "time_sleep" "worker_node" {
-  depends_on = [proxmox_virtual_environment_vm.worker_node]
-  create_duration = "80s"
-  lifecycle {
-    replace_triggered_by = [proxmox_virtual_environment_vm.worker_node]
+  provisioner "local-exec" {
+    when    = create
+    command = "until ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ${local.node_ssh_private_key_file} ubuntu@${local.worker_node_ips[count.index]} echo 'SSH is ready'; do sleep 5; done"
   }
 }
 
 resource "ansible_playbook" "cluster_worker_join" {
-  count      = var.worker_node_count
+  count      = var.worker_nodes.count
   playbook   = "../ansible/k8s.yml"
   replayable = false
 
@@ -337,7 +332,7 @@ resource "ansible_playbook" "cluster_worker_join" {
     local_ca_cert_file = var.cluster_ca_crt_file
   }
 
-  depends_on = [time_sleep.worker_node]
+  depends_on = [proxmox_virtual_environment_vm.worker_node]
 }
 
 // ====== Secrets ======
@@ -372,7 +367,7 @@ resource "tls_private_key" "node_ssh_key" {
 // ====== Files ======
 
 resource "local_sensitive_file" "cluster_kubeconfig" {
-  count    = var.save_kubeconfig.enabled ? 1 : 0
+  count    = var.kubeconfig_save_file != null ? 1 : 0
   content  = ssh_sensitive_resource.cluster_kubeconfig.result
   filename = local.cluster_kubeconfig_file
 }

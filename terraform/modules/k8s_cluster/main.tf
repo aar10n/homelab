@@ -9,12 +9,8 @@ terraform {
       version = "3.4.2"
     }
     kubectl = {
-      source  = "gavinbunney/kubectl"
-      version = "1.14.0"
-    }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "2.30.0"
+      source  = "alekc/kubectl"
+      version = "~> 2.0"
     }
     local = {
       source  = "hashicorp/local"
@@ -44,9 +40,7 @@ terraform {
 }
 
 provider "kubectl" {
-  config_path = local.cluster_kubeconfig_file
-}
-
-provider "kubernetes" {
-  config_path = local.cluster_kubeconfig_file
+  host  = "https://${var.cluster_ip}:6443"
+  cluster_ca_certificate = file(var.cluster_ca_crt_file)
+  token = local.cluster_token
 }

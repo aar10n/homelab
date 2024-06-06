@@ -1,9 +1,12 @@
 locals {
-  k8s_root = "${path.module}/manifests"
+  flannel_default_cidr = "10.244.0.0/16"
+  k8s_root             = "${path.module}/manifests"
 
-  flannel_manifest_file       = "${local.k8s_root}/flannel-0_25_2.yaml"
-  cert_manager_manifest_file  = "${local.k8s_root}/cert-manager-1_14_5.yaml"
-  ingress_nginx_manifest_file = "${local.k8s_root}/ingress-nginx-1_10_1.yaml"
+  flannel_manifest_file = "${local.k8s_root}/flannel-0_25_2.yaml"
+  flannel_manifest_documents = split("---", replace(file(local.flannel_manifest_file), local.flannel_default_cidr, var.pod_network_cidr))
+
+  metallb_manifest_file = "${local.k8s_root}/metallb-native-0_14_5.yaml"
+  metallb_manifest_documents = split("---", file(local.metallb_manifest_file))
 }
 
 resource "time_sleep" "cluster_ready" {
@@ -12,20 +15,38 @@ resource "time_sleep" "cluster_ready" {
   create_duration = "10s"
 }
 
-module "kubectl_apply_cni" {
-  source = "./modules/kubectl_apply"
-  # replace default flannel pod network CIDR with the one specified in the variables
-  content = replace(file(local.flannel_manifest_file), "10.244.0.0/16", var.pod_network_cidr)
+resource "kubectl_manifest" "flannel_cni" {
+  count = length(local.flannel_manifest_documents)
+  yaml_body         = local.flannel_manifest_documents[count.index]
+  server_side_apply = true
+  wait              = true
+  wait_for_rollout  = true
   depends_on = [time_sleep.cluster_ready]
 }
 
-module "kubectl_apply_dependencies" {
-  source = "./modules/kubectl_apply"
-  for_each = {
-    cert-manager  = local.cert_manager_manifest_file
-    ingress-nginx = local.ingress_nginx_manifest_file
-  }
+resource "kubectl_manifest" "metallb" {
+  count = length(local.metallb_manifest_documents)
+  yaml_body         = local.metallb_manifest_documents[count.index]
+  server_side_apply = true
+  wait              = true
+  wait_for_rollout  = true
+  depends_on = [kubectl_manifest.flannel_cni]
+}
 
-  file = each.value
-  depends_on = [module.kubectl_apply_cni]
+resource "kubectl_manifest" "metallb_address_pool" {
+  count             = var.metallb_address_pool != null ? 1 : 0
+  yaml_body         = <<EOF
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: address-pool
+  namespace: metallb-system
+spec:
+  addresses:
+  - ${var.metallb_address_pool}
+EOF
+  server_side_apply = true
+  wait              = true
+  wait_for_rollout  = true
+  depends_on = [kubectl_manifest.metallb]
 }

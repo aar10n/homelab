@@ -1,0 +1,61 @@
+---
+- name: Packages setup (Debian/Ubuntu)
+  when: ansible_os_family == 'Debian'
+  block:
+    - name: Wait for automatic system updates to complete
+      shell: while pgrep apt; do sleep 10; done;
+
+    - name: Set apt periodic update to 0
+      lineinfile:
+        path: /etc/apt/apt.conf.d/10periodic
+        regexp: "^APT::Periodic::Update-Package-Lists"
+        line: 'APT::Periodic::Update-Package-Lists "0";'
+        create: yes
+
+    - name: Set apt auto-update to 0
+      lineinfile:
+        path: /etc/apt/apt.conf.d/10periodic
+        regexp: "^APT::Periodic::Automatic-Update"
+        line: 'APT::Periodic::Automatic-Update "0";'
+        create: yes
+
+    - name: Disable unattended apt upgrades
+      lineinfile:
+        path: /etc/apt/apt.conf.d/10periodic
+        regexp: "^APT::Periodic::Unattended-Upgrade"
+        line: 'APT::Periodic::Unattended-Upgrade "0";'
+        create: yes
+
+    - name: Disable unattended-upgrades
+      systemd:
+        name: unattended-upgrades
+        enabled: no
+        state: stopped
+        masked: yes
+      register: stop_service
+      failed_when:
+        - stop_service is failed
+        - '"Could not find the requested service" not in stop_service.msg'
+
+    - name: Remove unattended-upgrades
+      apt:
+        name: unattended-upgrades
+        state: absent
+
+    - name: Update apt-get repo and cache
+      apt:
+        update_cache: yes
+        force_apt_get: yes
+        cache_valid_time: 3600
+
+    - name: Install common packages
+      apt:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+          - curl
+          - jq
+          - yq
+          - net-tools
+          - wget

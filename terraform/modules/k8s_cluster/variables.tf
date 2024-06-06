@@ -29,6 +29,12 @@ variable "service_network_cidr" {
   default     = "10.96.0.0/12"
 }
 
+variable "metallb_address_pool" {
+  description = "The IP address pool to use for MetalLB"
+  type        = string
+  default     = null
+}
+
 variable "cluster_ca_crt_file" {
   description = "The path to a CA certificate file to use for this cluster"
   default     = null
@@ -41,20 +47,6 @@ variable "cluster_ca_key_file" {
 
 // ====== Node Options ======
 
-variable "control_plane_node_count" {
-  description = "The number of control plane nodes to create"
-  default     = 3
-  validation {
-    condition     = var.control_plane_node_count > 0
-    error_message = "The control plane node count must be greater than 0"
-  }
-}
-
-variable "worker_node_count" {
-  description = "The number of worker nodes to create"
-  default     = 2
-}
-
 variable "node_network" {
   description = "Node network configuration"
   type = object({
@@ -64,29 +56,62 @@ variable "node_network" {
   })
 }
 
-variable "node_image" {
-  description = "The unique ID of the Proxmox image to use for the nodes"
-  default     = "local:iso/jammy-server-cloudimg-amd64.img"
+variable "control_plane_nodes" {
+  description = "Control plane node configuration"
+  type = object({
+    count       = number
+    cpu         = number
+    memory      = number
+    disk_volume = string
+    disk_size   = number
+    image       = string
+  })
+  default = {
+    count       = 3,
+    cpu         = 2,
+    memory      = 2048,
+    disk_volume = "local-lvm",
+    disk_size   = 10,
+    image       = "local:iso/jammy-server-cloudimg-amd64.img",
+  }
 }
 
-variable "node_cpu" {
-  description = "The number of CPU cores to allocate to each node"
-  default     = 2
+variable "worker_nodes" {
+  description = "Worker node configuration"
+  type = object({
+    count       = number
+    cpu         = number
+    memory      = number
+    disk_volume = string
+    disk_size   = number
+    image       = string
+  })
+  default = {
+    count       = 2,
+    cpu         = 2,
+    memory      = 2048,
+    disk_volume = "local-lvm",
+    disk_size   = 10,
+    image       = "local:iso/jammy-server-cloudimg-amd64.img",
+  }
 }
 
-variable "node_memory" {
-  description = "The amount of memory to allocate to each node"
-  default     = 2048
-}
-
-variable "node_disk_size" {
-  description = "The size of the disk to allocate to each node"
-  default     = 10
-}
-
-variable "node_disk_volume" {
-  description = "The name of the storage volume to use for the node disks"
-  default     = "local-lvm"
+variable "loadbalancer_instance" {
+  description = "API server loadbalancer instance configuration"
+  type = object({
+    cpu         = number
+    memory      = number
+    disk_volume = string
+    disk_size   = number
+    template    = string
+  })
+  default = {
+    cpu         = 1,
+    memory      = 512,
+    disk_volume = "local-lvm",
+    disk_size   = 4,
+    template    = "local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
+  }
 }
 
 variable "start_on_boot" {
@@ -100,37 +125,21 @@ variable "vm_start_id" {
   default     = null
 }
 
+variable "worker_id_offset" {
+  description = "The offset of the worker node IDs from vm_start_id"
+  default     = 50
+}
+
 // ====== Local Files ======
 
-variable "save_kubeconfig" {
-  description = "Save the kubeconfig to a file"
-  type = object({
-    enabled  = bool
-    filename = string
-  })
-  default = {
-    enabled  = true
-    filename = "kubeconfig.yaml"
-  }
-  validation {
-    condition     = var.save_kubeconfig.enabled && var.save_kubeconfig.filename != ""
-    error_message = "If save_kubeconfig is enabled, a filename must be provided"
-  }
+variable "kubeconfig_save_file" {
+  description = "The path to save the kubeconfig file"
+  type        = string
+  default     = null
 }
 
-variable "save_node_ssh_key" {
-  description = "Save the node SSH key to a file"
-  type = object({
-    enabled  = bool
-    filename = string
-  })
-  default = {
-    enabled  = false
-    filename = ""
-  }
-  validation {
-    condition     = var.save_node_ssh_key.enabled && var.save_node_ssh_key.filename != ""
-    error_message = "If save_node_ssh_key is enabled, a filename must be provided"
-  }
+variable "ssh_key_save_file" {
+  description = "The path to save the node SSH key file"
+  type        = string
+  default     = null
 }
-
