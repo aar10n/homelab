@@ -8,6 +8,7 @@ crio_version: "1.29"
 k8s_kubeadm_init: no
 k8s_init_pod_network_cidr: "10.10.0.0/16"
 k8s_init_service_cidr: "10.96.0.0/12"
+k8s_init_create_admin: yes
 
 # Subsequent nodes
 k8s_kubeadm_join: no

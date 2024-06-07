@@ -93,7 +93,7 @@ resource "proxmox_virtual_environment_vm" "control_plane_init_node" {
 }
 
 resource "ansible_playbook" "control_plane_init" {
-  playbook   = "../ansible/k8s.yml"
+  playbook   = "../ansible/kubernetes.yml"
   replayable = false
 
   name = local.control_plane_ips[0]
@@ -218,7 +218,7 @@ resource "proxmox_virtual_environment_vm" "control_plane_node" {
 
 resource "ansible_playbook" "control_plane_join" {
   count = max(0, var.control_plane_nodes.count - 1)
-  playbook   = "../ansible/k8s.yml"
+  playbook   = "../ansible/kubernetes.yml"
   replayable = false
 
   name = local.control_plane_ips[count.index+1]
@@ -314,7 +314,7 @@ resource "proxmox_virtual_environment_vm" "worker_node" {
 
 resource "ansible_playbook" "cluster_worker_join" {
   count      = var.worker_nodes.count
-  playbook   = "../ansible/k8s.yml"
+  playbook   = "../ansible/kubernetes.yml"
   replayable = false
 
   name = local.worker_node_ips[count.index]

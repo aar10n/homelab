@@ -90,17 +90,10 @@
     enabled: yes
     state: started
 
-- name: Remove the cni configuration directory
+- name: Remove the default cni configuration
   file:
-    path: /etc/cni/net.d/
+    path: /etc/cni/net.d/11-crio-ipv4-bridge.conflist
     state: absent
-
-- name: Recreate the cni configuration directory
-  notify: restart cri-o
-  file:
-    path: /etc/cni/net.d/
-    state: directory
-    mode: 0755
 
 - name: Initialize the Kubernetes cluster
   when: k8s_kubeadm_init
@@ -111,8 +104,8 @@
         cmd: kubeadm init {{ _kubeadm_init_args }}
         creates: /etc/kubernetes/admin.conf
 
-    - name: Get the cluster token
-      register: cluster_token
+    - name: Get the cluster join token
+      register: cluster_join_token
       shell: kubeadm token list | awk '$4 == "authentication,signing" { print $1; exit; }'
 
     - name: Get the discovery token ca-cert hash
@@ -131,9 +124,74 @@
         dest: "/tmp/{{ item }}"
         content: "{{ hostvars[inventory_hostname][item].stdout }}"
       loop:
-        - cluster_token
+        - cluster_join_token
         - discovery_token_ca_cert_hash
         - certificate_key
+
+- name: Create kubernetes admin service account and token
+  when: k8s_create_admin #and k8s_kubeadm_init
+  block:
+    - name: Install pip3
+      apt:
+        name: python3-pip
+        state: present
+
+    - name: Install kubernetes python module
+      pip:
+        name: kubernetes
+        state: present
+
+    - name: Create the admin service account
+      k8s:
+        kubeconfig: /etc/kubernetes/admin.conf
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: admin
+            namespace: kube-system
+
+    - name: Create the admin cluster role binding
+      k8s:
+        kubeconfig: /etc/kubernetes/admin.conf
+        definition:
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRoleBinding
+          metadata:
+            name: admin
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: cluster-admin
+          subjects:
+            - kind: ServiceAccount
+              name: admin
+              namespace: kube-system
+
+    - name: Create the admin service account token
+      k8s:
+        kubeconfig: /etc/kubernetes/admin.conf
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: admin-token
+            namespace: kube-system
+            annotations:
+              kubernetes.io/service-account.name: admin
+          type: kubernetes.io/service-account-token
+
+
+    - name: Get the admin service account token
+      register: admin_token
+      shell: kubectl get secret admin-token -n kube-system -o jsonpath='{.data.token}' | base64 -d
+
+    - name: Save admin token to /tmp
+      copy:
+        dest: "/tmp/cluster_admin_token"
+        content: "{{ admin_token.stdout }}"
 
 - name: Join the Kubernetes cluster
   when: k8s_kubeadm_join and not k8s_kubeadm_init

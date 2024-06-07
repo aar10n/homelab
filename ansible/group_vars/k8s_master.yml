@@ -1,2 +1,1 @@
-k8s_kubeadm_join: yes
 k8s_join_as_master: yes

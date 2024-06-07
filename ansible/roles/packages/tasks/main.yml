@@ -56,6 +56,5 @@
         packages:
           - curl
           - jq
-          - yq
           - net-tools
           - wget

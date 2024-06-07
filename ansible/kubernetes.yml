@@ -8,4 +8,4 @@
       import_role:
         name: local-ca
     - import_role:
-        name: k8s
+        name: kubernetes
