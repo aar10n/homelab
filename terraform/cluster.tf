@@ -4,6 +4,7 @@ module "k8s_cluster" {
 
   cluster_name         = "k8s"
   cluster_ip           = "192.168.10.0"
+  cluster_dns_server   = "192.168.0.1"
   pod_network_cidr     = "10.244.0.0/16"
   service_network_cidr = "10.96.0.0/12"
   cluster_ca_crt_file = pathexpand("~/.certs/rootCA.pem")
@@ -35,7 +36,7 @@ module "k8s_cluster" {
   }
 
   metallb_address_pool = "192.168.100.10-192.168.100.250"
-  #emissary_port_listeners
+  #emissary_port_listeners = []
 
   kubeconfig_save_file = pathexpand("~/.kube/k8s_cluster_config")
   ssh_key_save_file = pathexpand("~/.ssh/k8s_cluster_key")
@@ -44,11 +45,3 @@ module "k8s_cluster" {
     proxmox = proxmox
   }
 }
-
-# resource "mikrotik_dns_record" "emissary_loadbalancer" {
-#   address = module.k8s_cluster.emissary_load_balancer_ip
-#   name    = "emissary"
-#   ttl     = 3600
-#   comment = "Managed by Terraform"
-# }
-#

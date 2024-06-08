@@ -27,6 +27,34 @@ resource "time_sleep" "cluster_ready" {
   create_duration = "10s"
 }
 
+# configure
+resource "kubernetes_config_map_v1_data" "coredns_config" {
+  count = var.cluster_dns_server != null ? 1 : 0
+  metadata {
+    name      = "coredns"
+    namespace = "kube-system"
+  }
+  data = {
+    Corefile : <<EOF
+:53 {
+    errors
+    health
+    kubernetes cluster.local in-addr.arpa ip6.arpa {
+       pods insecure
+       fallthrough in-addr.arpa ip6.arpa
+    }
+    prometheus :9153
+    cache 30
+    loop
+    reload
+    loadbalance
+    forward . ${var.cluster_dns_server}
+}
+EOF
+  }
+  force = true
+}
+
 resource "kubectl_manifest" "flannel_cni" {
   count = length(local.flannel_manifest_documents)
   yaml_body         = local.flannel_manifest_documents[count.index]

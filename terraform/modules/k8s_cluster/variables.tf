@@ -17,6 +17,12 @@ variable "cluster_ip" {
   type        = string
 }
 
+variable "cluster_dns_server" {
+  description = "The IP address of an upstream DNS server to use"
+  type        = string
+  default     = null
+}
+
 variable "pod_network_cidr" {
   description = "The CIDR range for the pod network"
   type        = string
