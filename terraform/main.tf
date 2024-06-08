@@ -12,6 +12,10 @@ terraform {
       source  = "alekc/kubectl"
       version = "~> 2.0"
     }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "2.30.0"
+    }
     local = {
       source  = "hashicorp/local"
       version = "2.5.1"
@@ -51,7 +55,7 @@ provider "proxmox" {
 }
 
 provider "mikrotik" {
-  host     = var.mikrotik_host
+  host     = var.mikrotik_api_host
   username = var.mikrotik_user
   password = var.mikrotik_password
   tls      = var.mikrotik_tls

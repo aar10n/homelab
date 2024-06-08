@@ -8,8 +8,13 @@ output "cluster_endpoint" {
   value = local.cluster_endpoint
 }
 
-output "cluster_token" {
-  value     = local.cluster_token
+output "cluster_admin_token" {
+  value     = local.cluster_admin_token
+  sensitive = true
+}
+
+output "cluster_join_token" {
+  value     = local.cluster_join_token
   sensitive = true
 }
 
@@ -34,4 +39,8 @@ output "node_public_key" {
 output "node_private_key" {
   value     = tls_private_key.node_ssh_key.private_key_openssh
   sensitive = true
+}
+
+output "emissary_load_balancer_ip" {
+  value = local.emissary_ingress_loadbalancer_ip
 }

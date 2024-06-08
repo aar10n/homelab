@@ -47,8 +47,8 @@ variable "proxmox_ssh_agent" {
 
 // ====== MikroTik ======
 
-variable "mikrotik_host" {
-  description = "The hostname of the MikroTik router"
+variable "mikrotik_api_host" {
+  description = "The MikroTik router API host"
   type        = string
 }
 

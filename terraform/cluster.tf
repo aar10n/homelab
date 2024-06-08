@@ -6,7 +6,8 @@ module "k8s_cluster" {
   cluster_ip           = "192.168.10.0"
   pod_network_cidr     = "10.244.0.0/16"
   service_network_cidr = "10.96.0.0/12"
-  metallb_address_pool = "192.168.100.10-192.168.100.250"
+  cluster_ca_crt_file = pathexpand("~/.certs/rootCA.pem")
+  cluster_ca_key_file = pathexpand("~/.certs/rootCA-key.pem")
   vm_start_id          = 500
 
   node_network = {
@@ -33,14 +34,21 @@ module "k8s_cluster" {
     image       = "local:iso/jammy-server-cloudimg-amd64.img",
   }
 
-  cluster_ca_crt_file = pathexpand("~/.certs/rootCA.pem")
-  cluster_ca_key_file = pathexpand("~/.certs/rootCA-key.pem")
+  metallb_address_pool = "192.168.100.10-192.168.100.250"
+  #emissary_port_listeners
 
   kubeconfig_save_file = pathexpand("~/.kube/k8s_cluster_config")
   ssh_key_save_file = pathexpand("~/.ssh/k8s_cluster_key")
 
   providers = {
-    proxmox  = proxmox
-    mikrotik = mikrotik
+    proxmox = proxmox
   }
 }
+
+# resource "mikrotik_dns_record" "emissary_loadbalancer" {
+#   address = module.k8s_cluster.emissary_load_balancer_ip
+#   name    = "emissary"
+#   ttl     = 3600
+#   comment = "Managed by Terraform"
+# }
+#

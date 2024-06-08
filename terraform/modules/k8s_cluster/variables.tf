@@ -29,12 +29,6 @@ variable "service_network_cidr" {
   default     = "10.96.0.0/12"
 }
 
-variable "metallb_address_pool" {
-  description = "The IP address pool to use for MetalLB"
-  type        = string
-  default     = null
-}
-
 variable "cluster_ca_crt_file" {
   description = "The path to a CA certificate file to use for this cluster"
   default     = null
@@ -54,6 +48,24 @@ variable "node_network" {
     gateway    = string
     start_host = number
   })
+}
+
+variable "loadbalancer_instance" {
+  description = "API server loadbalancer instance configuration"
+  type = object({
+    cpu         = number
+    memory      = number
+    disk_volume = string
+    disk_size   = number
+    template    = string
+  })
+  default = {
+    cpu         = 1,
+    memory      = 512,
+    disk_volume = "local-lvm",
+    disk_size   = 4,
+    template    = "local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
+  }
 }
 
 variable "control_plane_nodes" {
@@ -96,24 +108,6 @@ variable "worker_nodes" {
   }
 }
 
-variable "loadbalancer_instance" {
-  description = "API server loadbalancer instance configuration"
-  type = object({
-    cpu         = number
-    memory      = number
-    disk_volume = string
-    disk_size   = number
-    template    = string
-  })
-  default = {
-    cpu         = 1,
-    memory      = 512,
-    disk_volume = "local-lvm",
-    disk_size   = 4,
-    template    = "local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
-  }
-}
-
 variable "start_on_boot" {
   description = "Start the nodes on boot"
   type        = bool
@@ -128,6 +122,28 @@ variable "vm_start_id" {
 variable "worker_id_offset" {
   description = "The offset of the worker node IDs from vm_start_id"
   default     = 50
+}
+
+// ====== Kubernetes Options ======
+
+variable "metallb_address_pool" {
+  description = "The IP address pool to use for MetalLB"
+  type        = string
+  default     = null
+}
+
+variable "emissary_port_listeners" {
+  description = "The ports to create Emissary listeners for"
+  type = list(object({
+    port     = number
+    protocol = string
+  }))
+  default = [
+    {
+      port     = 8080
+      protocol = "HTTPS"
+    }
+  ]
 }
 
 // ====== Local Files ======

@@ -1,6 +1,6 @@
 locals {
   cluster_endpoint = "${var.cluster_ip}:6443"
-  cluster_token = sensitive("${random_password.cluster_token_part_a.result}.${random_password.cluster_token_part_b.result}")
+  cluster_join_token = sensitive("${random_password.cluster_token_part_a.result}.${random_password.cluster_token_part_b.result}")
   cluster_discovery_token_ca_cert_hash = sensitive("sha256:${trimspace(ssh_sensitive_resource.cluster_discovery_token_ca_cert_hash.result)}")
   cluster_certificate_key = sensitive(trimspace(ssh_sensitive_resource.cluster_certificate_key.result))
   node_network_bits = tonumber(split("/", var.node_network.cidr)[1])
@@ -21,6 +21,7 @@ locals {
     local.tmp_cluster_config_file)
   node_ssh_private_key_file = (var.ssh_key_save_file != null ? var.ssh_key_save_file :
     local.tmp_node_ssh_private_key_file)
+  cluster_admin_token = trimspace(ssh_sensitive_resource.cluster_admin_token.result)
 }
 
 //
@@ -104,7 +105,8 @@ resource "ansible_playbook" "control_plane_init" {
     ansible_ssh_private_key_file = local.node_ssh_private_key_file
 
     k8s_kubeadm_init          = true
-    k8s_cluster_token         = local.cluster_token
+    k8s_kubeadm_join          = true
+    k8s_cluster_token         = local.cluster_join_token
     k8s_cluster_endpoint      = local.cluster_endpoint
     k8s_init_pod_network_cidr = var.pod_network_cidr
     k8s_init_service_cidr     = var.service_network_cidr
@@ -124,6 +126,14 @@ resource "ssh_sensitive_resource" "cluster_kubeconfig" {
   host = element(local.control_plane_ips, 0)
   private_key = tls_private_key.node_ssh_key.private_key_openssh
   commands = ["sudo cat /etc/kubernetes/admin.conf"]
+  depends_on = [ansible_playbook.control_plane_init]
+}
+
+resource "ssh_sensitive_resource" "cluster_admin_token" {
+  user        = "ubuntu"
+  host = element(local.control_plane_ips, 0)
+  private_key = tls_private_key.node_ssh_key.private_key_openssh
+  commands = ["cat /tmp/cluster_admin_token"]
   depends_on = [ansible_playbook.control_plane_init]
 }
 
@@ -228,7 +238,8 @@ resource "ansible_playbook" "control_plane_join" {
     ansible_user                 = "ubuntu"
     ansible_ssh_private_key_file = local.node_ssh_private_key_file
 
-    k8s_cluster_token                     = local.cluster_token
+    k8s_kubeadm_join                      = true
+    k8s_cluster_token                     = local.cluster_join_token
     k8s_cluster_endpoint                  = local.cluster_endpoint
     k8s_join_discovery_token_ca_cert_hash = local.cluster_discovery_token_ca_cert_hash
     k8s_join_certificate_key              = local.cluster_certificate_key
@@ -324,7 +335,8 @@ resource "ansible_playbook" "cluster_worker_join" {
     ansible_user                 = "ubuntu"
     ansible_ssh_private_key_file = local.node_ssh_private_key_file
 
-    k8s_cluster_token                     = local.cluster_token
+    k8s_kubeadm_join                      = true
+    k8s_cluster_token                     = local.cluster_join_token
     k8s_cluster_endpoint                  = local.cluster_endpoint
     k8s_join_discovery_token_ca_cert_hash = local.cluster_discovery_token_ca_cert_hash
     k8s_join_certificate_key              = local.cluster_certificate_key

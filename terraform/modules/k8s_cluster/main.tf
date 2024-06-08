@@ -12,13 +12,13 @@ terraform {
       source  = "alekc/kubectl"
       version = "~> 2.0"
     }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "2.30.0"
+    }
     local = {
       source  = "hashicorp/local"
       version = "2.5.1"
-    }
-    mikrotik = {
-      source  = "ddelnano/mikrotik"
-      version = "0.15.0"
     }
     proxmox = {
       source  = "bpg/proxmox"
@@ -42,5 +42,11 @@ terraform {
 provider "kubectl" {
   host  = "https://${var.cluster_ip}:6443"
   cluster_ca_certificate = file(var.cluster_ca_crt_file)
-  token = local.cluster_token
+  token = local.cluster_admin_token
+}
+
+provider "kubernetes" {
+  host  = "https://${var.cluster_ip}:6443"
+  cluster_ca_certificate = file(var.cluster_ca_crt_file)
+  token = local.cluster_admin_token
 }
