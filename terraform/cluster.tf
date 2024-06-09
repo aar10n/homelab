@@ -36,7 +36,6 @@ module "k8s_cluster" {
   }
 
   metallb_address_pool = "192.168.100.10-192.168.100.250"
-  #emissary_port_listeners = []
 
   kubeconfig_save_file = pathexpand("~/.kube/k8s_cluster_config")
   ssh_key_save_file = pathexpand("~/.ssh/k8s_cluster_key")
@@ -44,4 +43,8 @@ module "k8s_cluster" {
   providers = {
     proxmox = proxmox
   }
+}
+
+output "cluster_gateway_ip" {
+  value = module.k8s_cluster.gateway_external_ip
 }

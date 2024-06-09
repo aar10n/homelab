@@ -2,23 +2,32 @@ locals {
   k8s_root = "${path.module}/manifests"
 
   flannel_manifest_file = "${local.k8s_root}/flannel-cni.yaml"
-  flannel_manifest_documents = split("---", replace(file(local.flannel_manifest_file), local.flannel_default_cidr, var.pod_network_cidr))
+  flannel_manifest_documents = split("\n---\n", replace(file(local.flannel_manifest_file), local.flannel_default_cidr, var.pod_network_cidr))
   flannel_default_cidr  = "10.244.0.0/16"
 
   metallb_manifest_file = "${local.k8s_root}/metallb-native.yaml"
-  metallb_manifest_documents = split("---", file(local.metallb_manifest_file))
+  metallb_manifest_documents = split("\n---\n", file(local.metallb_manifest_file))
   metallb_has_ips       = var.metallb_address_pool != null
 
-  emissary_crds_manifest_file = "${local.k8s_root}/emissary-crds.yaml"
-  emissary_crds_manifest_documents = compact(split("---\n", file(local.emissary_crds_manifest_file)))
+  contour_manifest_file = "${local.k8s_root}/contour-gateway.yaml"
+  contour_manifest_documents = split("\n---\n", replace(file(local.contour_manifest_file), "/(name(space)?): projectcontour/", "$1: contour"))
+  gateway_enabled       = (var.default_gateway.enabled && length(local.gateway_listeners) > 0)
+  gateway_listeners     = [
+    for i, lst in var.gateway_listeners : {
+      name : lower(lst.protocol)
+      port : lst.port
+      protocol : lst.protocol
+      allowedRoutes : {
+        namespaces : {
+          from : "All"
+        }
+      }
+    }
+  ]
 
-  emissary_ns_manifest_file = "${local.k8s_root}/emissary-ns.yaml"
-  emissary_ns_manifest_documents = compact(split("---\n", file(local.emissary_ns_manifest_file)))
-
-  emissary_ingress_loadbalancer_status = data.kubernetes_service.emissary_ingress.status[0]["load_balancer"][0]["ingress"]
-  emissary_ingress_loadbalancer_ip     = (length(local.emissary_ingress_loadbalancer_status) > 0 ?
-    local.emissary_ingress_loadbalancer_status[0]["ip"]
-    : null)
+  envoy_service_lb_ingress_status = data.kubernetes_service.envoy_gateway[0].status[0].load_balancer[0]["ingress"]
+  envoy_service_external_ip       = (length(local.envoy_service_lb_ingress_status) > 0 ?
+    local.envoy_service_lb_ingress_status[0]["ip"] : null)
 }
 
 resource "time_sleep" "cluster_ready" {
@@ -36,19 +45,23 @@ resource "kubernetes_config_map_v1_data" "coredns_config" {
   }
   data = {
     Corefile : <<EOF
-:53 {
+.:53 {
     errors
-    health
+    health {
+        lameduck 5s
+    }
+    ready
     kubernetes cluster.local in-addr.arpa ip6.arpa {
-       pods insecure
-       fallthrough in-addr.arpa ip6.arpa
+        pods insecure
+        fallthrough in-addr.arpa ip6.arpa
+        ttl 30
     }
     prometheus :9153
+    forward . ${var.cluster_dns_server}
     cache 30
     loop
     reload
     loadbalance
-    forward . ${var.cluster_dns_server}
 }
 EOF
   }
@@ -110,56 +123,52 @@ EOF
   depends_on = [kubectl_manifest.metallb]
 }
 
-resource "kubernetes_namespace" "emissary_ns" {
-  metadata {
-    name = "emissary"
-  }
+resource "kubectl_manifest" "contour" {
+  count = length(local.contour_manifest_documents)
+  yaml_body        = local.contour_manifest_documents[count.index]
+  wait             = true
+  wait_for_rollout = true
+
   depends_on = [kubectl_manifest.metallb]
 }
 
-resource "kubectl_manifest" "emissary_crds" {
-  count = length(local.emissary_crds_manifest_documents)
-  yaml_body        = local.emissary_crds_manifest_documents[count.index]
-  wait             = true
-  wait_for_rollout = true
-
-  depends_on = [kubernetes_namespace.emissary_ns]
-}
-
-resource "kubectl_manifest" "emissary_ns" {
-  count = length(local.emissary_ns_manifest_documents)
-  yaml_body        = local.emissary_ns_manifest_documents[count.index]
-  wait             = true
-  wait_for_rollout = true
-
-  ignore_fields = ["rules"]
-  depends_on = [kubectl_manifest.emissary_crds]
-}
-
-resource "kubectl_manifest" "emissary_listener" {
-  count = length(var.emissary_port_listeners)
-  yaml_body = <<EOF
-apiVersion: getambassador.io/v3alpha1
-kind: Listener
+resource "kubectl_manifest" "contour_gateway_class" {
+  yaml_body        = <<EOF
+kind: GatewayClass
+apiVersion: gateway.networking.k8s.io/v1
 metadata:
-  name: emissary-ingress-listener-${var.emissary_port_listeners[count.index].port}
-  namespace: emissary
+  name: contour
 spec:
-  port: ${var.emissary_port_listeners[count.index].port}
-  protocol: ${var.emissary_port_listeners[count.index].protocol}
-  securityModel: XFP
-  hostBinding:
-    namespace:
-      from: ALL
+  controllerName: projectcontour.io/gateway-controller
 EOF
+  wait             = true
+  wait_for_rollout = true
 
-  depends_on = [kubectl_manifest.emissary_ns]
+  depends_on = [kubectl_manifest.contour]
 }
 
-data "kubernetes_service" "emissary_ingress" {
+resource "kubectl_manifest" "default_gateway" {
+  count            = local.gateway_enabled ? 1 : 0
+  yaml_body        = <<EOF
+kind: Gateway
+apiVersion: gateway.networking.k8s.io/v1
+metadata:
+  name: ${var.default_gateway.name}
+  namespace: ${var.default_gateway.namespace}
+spec:
+  gatewayClassName: contour
+  listeners: ${jsonencode(local.gateway_listeners)}
+EOF
+  wait             = true
+  wait_for_rollout = true
+
+  depends_on = [kubectl_manifest.contour_gateway_class]
+}
+
+data "kubernetes_service" "envoy_gateway" {
+  count = local.gateway_enabled ? 1 : 0
   metadata {
-    name      = "emissary-ingress"
-    namespace = "emissary"
+    name      = "envoy-gateway"
+    namespace = var.default_gateway.namespace
   }
-  depends_on = [kubectl_manifest.emissary_listener]
 }

@@ -19,7 +19,7 @@ module "postgres_database" {
     cidr    = "${local.postgres_ip}/16"
     gateway = "192.168.0.1"
   }
-  
+
   instance_id          = 400
   instance_cpu         = 1
   instance_memory      = 2048
@@ -30,11 +30,4 @@ module "postgres_database" {
   providers = {
     proxmox = proxmox
   }
-}
-
-resource "mikrotik_dns_record" "postgres_local" {
-  address = module.postgres_database.instance_ip
-  name    = "postgres.local"
-  comment = "Managed by Terraform"
-  ttl     = 1800 # 30m
 }

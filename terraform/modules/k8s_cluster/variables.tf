@@ -138,16 +138,30 @@ variable "metallb_address_pool" {
   default     = null
 }
 
-variable "emissary_port_listeners" {
-  description = "The ports to create Emissary listeners for"
+variable "default_gateway" {
+  description = "Default cluster gateway configuration"
+  type = object({
+    enabled = bool
+    name = optional(string)
+    namespace = optional(string)
+  })
+  default = {
+    enabled   = true
+    name      = "gateway"
+    namespace = "contour"
+  }
+}
+
+variable "gateway_listeners" {
+  description = "The listeners to create on the default Gateway"
   type = list(object({
     port     = number
     protocol = string
   }))
   default = [
     {
-      port     = 8080
-      protocol = "HTTPS"
+      port     = 80
+      protocol = "HTTP"
     }
   ]
 }

@@ -41,6 +41,6 @@ output "node_private_key" {
   sensitive = true
 }
 
-output "emissary_load_balancer_ip" {
-  value = local.emissary_ingress_loadbalancer_ip
+output "gateway_external_ip" {
+  value = local.envoy_service_external_ip
 }

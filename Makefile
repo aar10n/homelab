@@ -8,16 +8,13 @@ METALLB_VERSION = 0.14.5
 METALLB_FILE    = metallb-native.yaml
 METALLB_URL  	= https://raw.githubusercontent.com/metallb/metallb/v$(METALLB_VERSION)/config/manifests/metallb-native.yaml
 
-EMISSARY_VERSION 	= 3.9.1
-EMISSARY_CRDS_FILE 	= emissary-crds.yaml
-EMISSARY_CRDS_URL 	= https://app.getambassador.io/yaml/emissary/$(EMISSARY_VERSION)/emissary-crds.yaml
-EMISSARY_NS_FILE 	= emissary-ns.yaml
-EMISSARY_NS_URL		= https://app.getambassador.io/yaml/emissary/$(EMISSARY_VERSION)/emissary-emissaryns.yaml
+CONTOUR_VERSION = 1.29
+CONTOUR_FILE 	= contour-gateway.yaml
+CONTOUR_URL 	= https://raw.githubusercontent.com/projectcontour/contour/release-$(CONTOUR_VERSION)/examples/render/contour-gateway-provisioner.yaml
 
 manifests = flannel-manifest \
 			metallb-manifest \
-			emissary-crds-manifest \
-			emissary-ns-manifest
+			contour-manifest
 
 
 download-manifests: $(manifests)
