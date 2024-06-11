@@ -1,9 +1,11 @@
 locals {
   cluster_endpoint = "${var.cluster_ip}:6443"
+  cluster_host_url = "https://${local.cluster_endpoint}"
+  node_network_bits = tonumber(split("/", var.node_network.cidr)[1])
+
   cluster_join_token = sensitive("${random_password.cluster_token_part_a.result}.${random_password.cluster_token_part_b.result}")
   cluster_discovery_token_ca_cert_hash = sensitive("sha256:${trimspace(ssh_sensitive_resource.cluster_discovery_token_ca_cert_hash.result)}")
   cluster_certificate_key = sensitive(trimspace(ssh_sensitive_resource.cluster_certificate_key.result))
-  node_network_bits = tonumber(split("/", var.node_network.cidr)[1])
 
   control_plane_ips = [
     for i in range(var.control_plane_nodes.count) :
@@ -380,7 +382,7 @@ resource "tls_private_key" "node_ssh_key" {
 
 resource "local_sensitive_file" "cluster_kubeconfig" {
   count    = var.kubeconfig_save_file != null ? 1 : 0
-  content  = ssh_sensitive_resource.cluster_kubeconfig.result
+  content = replace(ssh_sensitive_resource.cluster_kubeconfig.result, "kubernetes-admin@kubernetes", var.cluster_name)
   filename = local.cluster_kubeconfig_file
 }
 

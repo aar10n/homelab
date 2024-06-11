@@ -4,6 +4,10 @@ terraform {
       source  = "ansible/ansible"
       version = "1.3.0"
     }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "2.13.2"
+    }
     http = {
       source  = "hashicorp/http"
       version = "3.4.2"
@@ -60,4 +64,24 @@ provider "mikrotik" {
   password = var.mikrotik_password
   tls      = var.mikrotik_tls
   insecure = var.mikrotik_tls
+}
+
+provider "kubectl" {
+  host                   = module.k8s_cluster.cluster_host_url
+  cluster_ca_certificate = module.k8s_cluster.cluster_ca_certificate
+  token                  = module.k8s_cluster.cluster_admin_token
+}
+
+provider "kubernetes" {
+  host                   = module.k8s_cluster.cluster_host_url
+  cluster_ca_certificate = module.k8s_cluster.cluster_ca_certificate
+  token                  = module.k8s_cluster.cluster_admin_token
+}
+
+provider "helm" {
+  kubernetes {
+    host                   = module.k8s_cluster.cluster_host_url
+    cluster_ca_certificate = module.k8s_cluster.cluster_ca_certificate
+    token                  = module.k8s_cluster.cluster_admin_token
+  }
 }

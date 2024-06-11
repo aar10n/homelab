@@ -4,6 +4,10 @@ terraform {
       source  = "ansible/ansible"
       version = "1.3.0"
     }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "2.13.2"
+    }
     http = {
       source  = "hashicorp/http"
       version = "3.4.2"
@@ -40,13 +44,21 @@ terraform {
 }
 
 provider "kubectl" {
-  host  = "https://${var.cluster_ip}:6443"
+  host  = local.cluster_host_url
   cluster_ca_certificate = file(var.cluster_ca_crt_file)
   token = local.cluster_admin_token
 }
 
 provider "kubernetes" {
-  host  = "https://${var.cluster_ip}:6443"
+  host  = local.cluster_host_url
   cluster_ca_certificate = file(var.cluster_ca_crt_file)
   token = local.cluster_admin_token
+}
+
+provider "helm" {
+  kubernetes {
+    host  = local.cluster_host_url
+    cluster_ca_certificate = file(var.cluster_ca_crt_file)
+    token = local.cluster_admin_token
+  }
 }

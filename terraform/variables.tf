@@ -74,3 +74,16 @@ variable "mikrotik_insecure" {
   type        = bool
   default     = false
 }
+
+// ====== Cloudflare ======
+
+variable "cloudflare_email" {
+  description = "The email address for the Cloudflare account"
+  type        = string
+}
+
+variable "cloudflare_api_token" {
+  description = "The API token for Cloudflare DNS account access"
+  type        = string
+  sensitive   = true
+}

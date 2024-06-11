@@ -8,6 +8,15 @@ output "cluster_endpoint" {
   value = local.cluster_endpoint
 }
 
+output "cluster_host_url" {
+  value = local.cluster_host_url
+}
+
+output "cluster_ca_certificate" {
+  value = file(var.cluster_ca_crt_file)
+  sensitive = true
+}
+
 output "cluster_admin_token" {
   value     = local.cluster_admin_token
   sensitive = true

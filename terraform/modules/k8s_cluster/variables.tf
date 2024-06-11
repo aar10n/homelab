@@ -130,42 +130,6 @@ variable "worker_id_offset" {
   default     = 50
 }
 
-// ====== Kubernetes Options ======
-
-variable "metallb_address_pool" {
-  description = "The IP address pool to use for MetalLB"
-  type        = string
-  default     = null
-}
-
-variable "default_gateway" {
-  description = "Default cluster gateway configuration"
-  type = object({
-    enabled = bool
-    name = optional(string)
-    namespace = optional(string)
-  })
-  default = {
-    enabled   = true
-    name      = "gateway"
-    namespace = "contour"
-  }
-}
-
-variable "gateway_listeners" {
-  description = "The listeners to create on the default Gateway"
-  type = list(object({
-    port     = number
-    protocol = string
-  }))
-  default = [
-    {
-      port     = 80
-      protocol = "HTTP"
-    }
-  ]
-}
-
 // ====== Local Files ======
 
 variable "kubeconfig_save_file" {
@@ -178,4 +142,85 @@ variable "ssh_key_save_file" {
   description = "The path to save the node SSH key file"
   type        = string
   default     = null
+}
+
+// ====== Kubernetes Options ======
+
+variable "enable_cluster_setup" {
+  description = "Setup the cluster and install cluster components and after creation"
+  type        = bool
+  default     = true
+}
+
+variable "metallb_address_pool" {
+  description = "The IP address pool to use for MetalLB"
+  type        = string
+  default     = null
+}
+
+variable "cert_manager_letsencrypt_issuers" {
+  description = "Deploy Let's Encrypt cluster issuers"
+  type = object({
+    enabled = bool
+    email   = string
+  })
+  default = {
+    enabled = false
+    email   = ""
+  }
+}
+
+variable "cert_manager_cloudflare_api_token" {
+  description = "The Cloudflare API token for cert-manager's DNS solver"
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
+variable "default_gateway" {
+  description = "Default cluster gateway configuration"
+  type = object({
+    enabled = bool
+    name = optional(string)
+    namespace = optional(string)
+    tls = optional(object({
+      enabled = bool
+      commonName = optional(string)
+      dnsNames = optional(list(string))
+    }))
+  })
+  default = {
+    enabled   = true
+    name      = "gateway"
+    namespace = "projectcontour"
+    tls = {
+      enabled = false
+    }
+  }
+}
+
+variable "gateway_listeners" {
+  description = "The listeners to create on the default Gateway"
+  type = list(object({
+    port     = number
+    protocol = string
+    name = optional(string)
+    hostname = optional(string)
+    allowedRoutes = optional(any)
+    tls = optional(object({
+      mode = optional(string) # "Terminate" or "Passthrough"
+      certificateRefs = optional(list(any))
+      options = optional(any)
+    }))
+  }))
+  default = [
+    {
+      port     = 80
+      protocol = "HTTP"
+    },
+    {
+      port     = 443
+      protocol = "HTTPS"
+    }
+  ]
 }

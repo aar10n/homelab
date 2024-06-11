@@ -7,9 +7,10 @@ module "k8s_cluster" {
   cluster_dns_server   = "192.168.0.1"
   pod_network_cidr     = "10.244.0.0/16"
   service_network_cidr = "10.96.0.0/12"
+  vm_start_id          = 500
+
   cluster_ca_crt_file = pathexpand("~/.certs/rootCA.pem")
   cluster_ca_key_file = pathexpand("~/.certs/rootCA-key.pem")
-  vm_start_id          = 500
 
   node_network = {
     cidr       = "192.168.0.0/16"
@@ -35,10 +36,28 @@ module "k8s_cluster" {
     image       = "local:iso/jammy-server-cloudimg-amd64.img",
   }
 
-  metallb_address_pool = "192.168.100.10-192.168.100.250"
-
   kubeconfig_save_file = pathexpand("~/.kube/k8s_cluster_config")
   ssh_key_save_file = pathexpand("~/.ssh/k8s_cluster_key")
+
+  // ====== Cluster Setup ======
+
+  enable_cluster_setup              = true
+  metallb_address_pool              = "192.168.100.10-192.168.100.250"
+  cert_manager_cloudflare_api_token = var.cloudflare_api_token
+  cert_manager_letsencrypt_issuers = {
+    enabled = true
+    email   = "aarongillbraun@gmail.com"
+  }
+  default_gateway = {
+    enabled = true
+    tls = {
+      enabled = true
+      dnsNames = [
+        "home.agb.dev",
+        "*.home.agb.dev"
+      ]
+    }
+  }
 
   providers = {
     proxmox = proxmox

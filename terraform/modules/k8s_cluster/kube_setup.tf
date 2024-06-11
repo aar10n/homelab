@@ -6,28 +6,10 @@ locals {
   flannel_default_cidr  = "10.244.0.0/16"
 
   metallb_manifest_file = "${local.k8s_root}/metallb-native.yaml"
-  metallb_manifest_documents = split("\n---\n", file(local.metallb_manifest_file))
-  metallb_has_ips       = var.metallb_address_pool != null
+  metallb_manifest_documents = split("---", file(local.metallb_manifest_file))
 
   contour_manifest_file = "${local.k8s_root}/contour-gateway.yaml"
-  contour_manifest_documents = split("\n---\n", replace(file(local.contour_manifest_file), "/(name(space)?): projectcontour/", "$1: contour"))
-  gateway_enabled       = (var.default_gateway.enabled && length(local.gateway_listeners) > 0)
-  gateway_listeners     = [
-    for i, lst in var.gateway_listeners : {
-      name : lower(lst.protocol)
-      port : lst.port
-      protocol : lst.protocol
-      allowedRoutes : {
-        namespaces : {
-          from : "All"
-        }
-      }
-    }
-  ]
-
-  envoy_service_lb_ingress_status = data.kubernetes_service.envoy_gateway[0].status[0].load_balancer[0]["ingress"]
-  envoy_service_external_ip       = (length(local.envoy_service_lb_ingress_status) > 0 ?
-    local.envoy_service_lb_ingress_status[0]["ip"] : null)
+  contour_manifest_documents = split("\n---\n", file(local.contour_manifest_file))
 }
 
 resource "time_sleep" "cluster_ready" {
@@ -36,7 +18,6 @@ resource "time_sleep" "cluster_ready" {
   create_duration = "10s"
 }
 
-# configure
 resource "kubernetes_config_map_v1_data" "coredns_config" {
   count = var.cluster_dns_server != null ? 1 : 0
   metadata {
@@ -68,8 +49,10 @@ EOF
   force = true
 }
 
+// ====== Flannel ======
+
 resource "kubectl_manifest" "flannel_cni" {
-  count = length(local.flannel_manifest_documents)
+  count             = var.enable_cluster_setup ? length(local.flannel_manifest_documents) : 0
   yaml_body         = local.flannel_manifest_documents[count.index]
   server_side_apply = true
   wait              = true
@@ -77,18 +60,19 @@ resource "kubectl_manifest" "flannel_cni" {
   depends_on = [time_sleep.cluster_ready]
 }
 
+// ====== MetalLB ======
+
 resource "kubectl_manifest" "metallb" {
-  count = length(local.metallb_manifest_documents)
-  yaml_body        = local.metallb_manifest_documents[count.index]
-  wait             = true
-  wait_for_rollout = true
+  count     = var.enable_cluster_setup ? length(local.metallb_manifest_documents) : 0
+  yaml_body = local.metallb_manifest_documents[count.index]
+  wait      = true
 
   ignore_fields = ["spec.conversion.webhook.clientConfig.caBundle"]
   depends_on = [kubectl_manifest.flannel_cni]
 }
 
 resource "kubectl_manifest" "metallb_address_pool" {
-  count            = local.metallb_has_ips ? 1 : 0
+  count            = var.enable_cluster_setup && var.metallb_address_pool != null ? 1 : 0
   yaml_body        = <<EOF
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
@@ -97,7 +81,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-  - ${var.metallb_address_pool}
+    - ${var.metallb_address_pool}
 EOF
   wait             = true
   wait_for_rollout = true
@@ -106,7 +90,7 @@ EOF
 }
 
 resource "kubectl_manifest" "metallb_l2_advertisement" {
-  count            = local.metallb_has_ips ? 1 : 0
+  count            = var.enable_cluster_setup && var.metallb_address_pool != null ? 1 : 0
   yaml_body        = <<EOF
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
@@ -123,16 +107,18 @@ EOF
   depends_on = [kubectl_manifest.metallb]
 }
 
+// ====== Contour ======
+
 resource "kubectl_manifest" "contour" {
-  count = length(local.contour_manifest_documents)
-  yaml_body        = local.contour_manifest_documents[count.index]
-  wait             = true
-  wait_for_rollout = true
+  count     = var.enable_cluster_setup ? length(local.contour_manifest_documents) : 0
+  yaml_body = local.contour_manifest_documents[count.index]
+  wait      = true
 
   depends_on = [kubectl_manifest.metallb]
 }
 
 resource "kubectl_manifest" "contour_gateway_class" {
+  count            = var.enable_cluster_setup ? 1 : 0
   yaml_body        = <<EOF
 kind: GatewayClass
 apiVersion: gateway.networking.k8s.io/v1
@@ -147,14 +133,151 @@ EOF
   depends_on = [kubectl_manifest.contour]
 }
 
+// ============ Cert Manager ============
+
+resource "helm_release" "cert_manager" {
+  count            = var.enable_cluster_setup ? 1 : 0
+  name             = "cert-manager"
+  chart            = "cert-manager"
+  version          = "v1.15.0"
+  repository       = "https://charts.jetstack.io"
+  namespace        = "cert-manager"
+  create_namespace = true
+  wait             = true
+
+  set {
+    name  = "crds.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "crds.keep"
+    value = "false"
+  }
+
+  set {
+    name  = "extraArgs"
+    value = "{--enable-gateway-api}"
+  }
+
+  depends_on = [kubectl_manifest.contour]
+}
+
+resource "kubernetes_secret" "cloudflare_api_token" {
+  count = var.enable_cluster_setup && var.cert_manager_cloudflare_api_token != null ? 1 : 0
+  metadata {
+    name      = "cloudflare-api-token"
+    namespace = "cert-manager"
+  }
+  data = {
+    "api-token" = var.cert_manager_cloudflare_api_token
+  }
+
+  depends_on = [helm_release.cert_manager]
+}
+
+resource "kubectl_manifest" "cluster_issuer_letsencrypt" {
+  for_each = (var.enable_cluster_setup && var.cert_manager_letsencrypt_issuers.enabled) ? {
+    production : "https://acme-v02.api.letsencrypt.org/directory"
+    staging : "https://acme-staging-v02.api.letsencrypt.org/directory"
+  } : {}
+
+  yaml_body        = <<EOF
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-${each.key}
+spec:
+  acme:
+    email: ${var.cert_manager_letsencrypt_issuers.email}
+    server: ${each.value}
+    privateKeySecretRef:
+      name: letsencrypt-${each.key}
+    solvers:
+      - dns01:
+          cloudflare:
+            email: ${var.cert_manager_letsencrypt_issuers.email}
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token
+EOF
+  wait             = true
+  wait_for_rollout = true
+
+  depends_on = [kubernetes_secret.cloudflare_api_token]
+}
+
+// ============ Default API Gateway ============
+
+locals {
+  gateway_enabled     = (var.default_gateway.enabled && length(var.gateway_listeners) > 0)
+  gateway_tls_enabled = (local.gateway_enabled && var.default_gateway.tls.enabled)
+  gateway_cert_issuer = "letsencrypt-production"
+  gateway_name        = var.default_gateway.name != null ? var.default_gateway.name : "gateway"
+  gateway_namespace   = var.default_gateway.namespace != null ? var.default_gateway.namespace : "projectcontour"
+
+  gateway_tls = {
+    mode : "Terminate"
+    certificateRefs : [
+      {
+        name : "gateway-tls-secret"
+        namespace : local.gateway_namespace
+      }
+    ]
+    options = null
+  }
+
+  gateway_listeners = [
+    for i, lst in var.gateway_listeners : {
+      name : lst.name != null ? lst.name : lower(lst.port)
+      port : lst.port
+      protocol : lst.protocol
+      hostname : lst.hostname
+      tls : lst.tls != null ? lst.tls : (length(regexall("(HTTPS|TLS)", lst.protocol)) > 0 ? local.gateway_tls : null)
+      allowedRoutes : lst.allowedRoutes != null ? lst.allowedRoutes : {
+        namespaces : {
+          from : "All"
+        }
+      }
+    }
+  ]
+
+  envoy_service_lb_ingress_status = (var.enable_cluster_setup ?
+    (data.kubernetes_service.envoy_gateway[0].status != null ?
+      data.kubernetes_service.envoy_gateway[0].status[0].load_balancer[0]["ingress"] : []) : [])
+  envoy_service_external_ip = (length(local.envoy_service_lb_ingress_status) > 0 ?
+    local.envoy_service_lb_ingress_status[0]["ip"] : null)
+}
+
+resource "kubectl_manifest" "default_gateway_cert" {
+  count     = var.enable_cluster_setup && local.gateway_tls_enabled ? 1 : 0
+  yaml_body = <<EOF
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: gateway-tls
+  namespace: ${local.gateway_namespace}
+spec:
+  secretName: gateway-tls-secret
+  issuerRef:
+    name: ${local.gateway_cert_issuer}
+    kind: ClusterIssuer
+  commonName: ${jsonencode(var.default_gateway.tls["commonName"])}
+  dnsNames: ${jsonencode(var.default_gateway.tls["dnsNames"])}
+EOF
+  wait      = true
+
+  depends_on = [kubectl_manifest.cluster_issuer_letsencrypt]
+}
+
 resource "kubectl_manifest" "default_gateway" {
-  count            = local.gateway_enabled ? 1 : 0
+  count            = var.enable_cluster_setup && local.gateway_enabled ? 1 : 0
   yaml_body        = <<EOF
 kind: Gateway
 apiVersion: gateway.networking.k8s.io/v1
 metadata:
-  name: ${var.default_gateway.name}
-  namespace: ${var.default_gateway.namespace}
+  name: ${local.gateway_name}
+  namespace: ${local.gateway_namespace}
 spec:
   gatewayClassName: contour
   listeners: ${jsonencode(local.gateway_listeners)}
@@ -166,9 +289,9 @@ EOF
 }
 
 data "kubernetes_service" "envoy_gateway" {
-  count = local.gateway_enabled ? 1 : 0
+  count = var.enable_cluster_setup && local.gateway_enabled ? 1 : 0
   metadata {
     name      = "envoy-gateway"
-    namespace = var.default_gateway.namespace
+    namespace = local.gateway_namespace
   }
 }
