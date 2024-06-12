@@ -28,7 +28,7 @@ output "cluster_join_token" {
 }
 
 output "cluster_kubeconfig" {
-  value     = ssh_sensitive_resource.cluster_kubeconfig.result
+  value = replace(ssh_sensitive_resource.cluster_kubeconfig.result, "kubernetes-admin@kubernetes", var.cluster_name)
   sensitive = true
 }
 

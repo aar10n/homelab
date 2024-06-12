@@ -36,9 +36,6 @@ module "k8s_cluster" {
     image       = "local:iso/jammy-server-cloudimg-amd64.img",
   }
 
-  kubeconfig_save_file = pathexpand("~/.kube/k8s_cluster_config")
-  ssh_key_save_file = pathexpand("~/.ssh/k8s_cluster_key")
-
   // ====== Cluster Setup ======
 
   enable_cluster_setup              = true
@@ -66,4 +63,19 @@ module "k8s_cluster" {
 
 output "cluster_gateway_ip" {
   value = module.k8s_cluster.gateway_external_ip
+}
+
+resource "local_sensitive_file" "cluster_kubeconfig" {
+  content = module.k8s_cluster.cluster_kubeconfig
+  filename = pathexpand("~/.kube/k8s_cluster_config")
+}
+
+resource "local_sensitive_file" "node_ssh_private_key" {
+  content = module.k8s_cluster.node_private_key
+  filename = pathexpand("~/.ssh/k8s_cluster_key")
+}
+
+resource "local_file" "node_ssh_public_key" {
+  content = module.k8s_cluster.node_public_key
+  filename = pathexpand("~/.ssh/k8s_cluster_key.pub")
 }

@@ -130,20 +130,6 @@ variable "worker_id_offset" {
   default     = 50
 }
 
-// ====== Local Files ======
-
-variable "kubeconfig_save_file" {
-  description = "The path to save the kubeconfig file"
-  type        = string
-  default     = null
-}
-
-variable "ssh_key_save_file" {
-  description = "The path to save the node SSH key file"
-  type        = string
-  default     = null
-}
-
 // ====== Kubernetes Options ======
 
 variable "enable_cluster_setup" {

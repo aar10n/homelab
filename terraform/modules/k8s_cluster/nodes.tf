@@ -16,13 +16,7 @@ locals {
     cidrhost(var.node_network.cidr, i + var.node_network.start_host + var.control_plane_nodes.count)
   ]
 
-  tmp_cluster_config_file       = "/tmp/${var.cluster_name}_kubeconfig"
-  tmp_node_ssh_private_key_file = "/tmp/${var.cluster_name}_node_ssh_private_key"
-
-  cluster_kubeconfig_file = (var.kubeconfig_save_file != null ? var.kubeconfig_save_file :
-    local.tmp_cluster_config_file)
-  node_ssh_private_key_file = (var.ssh_key_save_file != null ? var.ssh_key_save_file :
-    local.tmp_node_ssh_private_key_file)
+  node_ssh_private_key_file = "/tmp/${var.cluster_name}_node_ssh_private_key"
   cluster_admin_token = trimspace(ssh_sensitive_resource.cluster_admin_token.result)
 }
 
@@ -379,12 +373,6 @@ resource "tls_private_key" "node_ssh_key" {
 }
 
 // ====== Files ======
-
-resource "local_sensitive_file" "cluster_kubeconfig" {
-  count    = var.kubeconfig_save_file != null ? 1 : 0
-  content = replace(ssh_sensitive_resource.cluster_kubeconfig.result, "kubernetes-admin@kubernetes", var.cluster_name)
-  filename = local.cluster_kubeconfig_file
-}
 
 resource "local_file" "node_ssh_public_key" {
   content  = tls_private_key.node_ssh_key.public_key_openssh

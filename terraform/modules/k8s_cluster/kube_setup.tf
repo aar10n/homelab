@@ -246,7 +246,7 @@ EOF
   depends_on = [kubernetes_secret.cloudflare_api_token]
 }
 
-// ============ Default API Gateway ============
+// ============ Default Gateway ============
 
 locals {
   gateway_enabled     = (var.default_gateway.enabled && length(var.gateway_listeners) > 0)
@@ -254,17 +254,6 @@ locals {
   gateway_cert_issuer = "letsencrypt-production"
   gateway_name        = var.default_gateway.name != null ? var.default_gateway.name : "gateway"
   gateway_namespace   = var.default_gateway.namespace != null ? var.default_gateway.namespace : "projectcontour"
-
-  gateway_tls = {
-    mode : "Terminate"
-    certificateRefs : [
-      {
-        name : "gateway-tls-secret"
-        namespace : local.gateway_namespace
-      }
-    ]
-    options = null
-  }
 
   gateway_listeners = [
     for i, lst in var.gateway_listeners : {
@@ -280,6 +269,17 @@ locals {
       }
     }
   ]
+
+  gateway_tls = {
+    mode : "Terminate"
+    certificateRefs : [
+      {
+        name : "gateway-tls-secret"
+        namespace : local.gateway_namespace
+      }
+    ]
+    options = null
+  }
 
   default_gateway_cert_yaml = <<EOF
 apiVersion: cert-manager.io/v1
