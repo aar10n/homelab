@@ -1,15 +1,5 @@
 locals {
   k8s_root = "${path.module}/manifests"
-
-  flannel_manifest_file = "${local.k8s_root}/flannel-cni.yaml"
-  flannel_manifest_documents = split("\n---\n", replace(file(local.flannel_manifest_file), local.flannel_default_cidr, var.pod_network_cidr))
-  flannel_default_cidr  = "10.244.0.0/16"
-
-  metallb_manifest_file = "${local.k8s_root}/metallb-native.yaml"
-  metallb_manifest_documents = split("---", file(local.metallb_manifest_file))
-
-  contour_manifest_file = "${local.k8s_root}/contour-gateway.yaml"
-  contour_manifest_documents = split("\n---\n", file(local.contour_manifest_file))
 }
 
 resource "time_sleep" "cluster_ready" {
@@ -51,6 +41,12 @@ EOF
 
 // ====== Flannel ======
 
+locals {
+  flannel_manifest_file = "${local.k8s_root}/flannel-cni.yaml"
+  flannel_manifest_documents = split("\n---\n", replace(file(local.flannel_manifest_file), local.flannel_default_cidr, var.pod_network_cidr))
+  flannel_default_cidr  = "10.244.0.0/16"
+}
+
 resource "kubectl_manifest" "flannel_cni" {
   count             = var.enable_cluster_setup ? length(local.flannel_manifest_documents) : 0
   yaml_body         = local.flannel_manifest_documents[count.index]
@@ -61,6 +57,33 @@ resource "kubectl_manifest" "flannel_cni" {
 }
 
 // ====== MetalLB ======
+
+locals {
+  metallb_manifest_file = "${local.k8s_root}/metallb-native.yaml"
+  metallb_manifest_documents = split("---", file(local.metallb_manifest_file))
+
+  metallb_address_pool_yaml = <<EOF
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: address-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - ${var.metallb_address_pool}
+EOF
+
+  metallb_l2_advertisement_yaml = <<EOF
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: l2-advertisement
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - address-pool
+EOF
+}
 
 resource "kubectl_manifest" "metallb" {
   count     = var.enable_cluster_setup ? length(local.metallb_manifest_documents) : 0
@@ -73,16 +96,7 @@ resource "kubectl_manifest" "metallb" {
 
 resource "kubectl_manifest" "metallb_address_pool" {
   count            = var.enable_cluster_setup && var.metallb_address_pool != null ? 1 : 0
-  yaml_body        = <<EOF
-apiVersion: metallb.io/v1beta1
-kind: IPAddressPool
-metadata:
-  name: address-pool
-  namespace: metallb-system
-spec:
-  addresses:
-    - ${var.metallb_address_pool}
-EOF
+  yaml_body        = local.metallb_address_pool_yaml
   wait             = true
   wait_for_rollout = true
 
@@ -91,23 +105,55 @@ EOF
 
 resource "kubectl_manifest" "metallb_l2_advertisement" {
   count            = var.enable_cluster_setup && var.metallb_address_pool != null ? 1 : 0
-  yaml_body        = <<EOF
-apiVersion: metallb.io/v1beta1
-kind: L2Advertisement
-metadata:
-  name: l2-advertisement
-  namespace: metallb-system
-spec:
-  ipAddressPools:
-    - address-pool
-EOF
+  yaml_body        = local.metallb_l2_advertisement_yaml
   wait             = true
   wait_for_rollout = true
 
   depends_on = [kubectl_manifest.metallb]
 }
 
+// ====== OpenEBS ======
+
+resource "helm_release" "openebs" {
+  count            = var.enable_cluster_setup ? 1 : 0
+  name             = "openebs"
+  chart            = "openebs"
+  version          = "v4.0.1"
+  repository       = "https://openebs.github.io/openebs"
+  namespace        = "openebs"
+  create_namespace = true
+  wait             = true
+
+  dynamic "set" {
+    for_each = {
+      "engines.local.lvm.enabled" : "false"
+      "engines.local.zfs.enabled" : "false"
+      "engines.replicated.mayastor.enabled" : "false"
+    }
+    content {
+      name  = set.key
+      value = set.value
+    }
+  }
+
+  depends_on = [kubectl_manifest.flannel_cni]
+}
+
 // ====== Contour ======
+
+locals {
+  contour_manifest_file = "${local.k8s_root}/contour-gateway.yaml"
+  contour_manifest_documents = split("\n---\n", file(local.contour_manifest_file))
+
+  contour_gateway_class_yaml = <<EOF
+kind: GatewayClass
+apiVersion: gateway.networking.k8s.io/v1
+metadata:
+  name: contour
+spec:
+  controllerName: projectcontour.io/gateway-controller
+EOF
+}
 
 resource "kubectl_manifest" "contour" {
   count     = var.enable_cluster_setup ? length(local.contour_manifest_documents) : 0
@@ -119,14 +165,7 @@ resource "kubectl_manifest" "contour" {
 
 resource "kubectl_manifest" "contour_gateway_class" {
   count            = var.enable_cluster_setup ? 1 : 0
-  yaml_body        = <<EOF
-kind: GatewayClass
-apiVersion: gateway.networking.k8s.io/v1
-metadata:
-  name: contour
-spec:
-  controllerName: projectcontour.io/gateway-controller
-EOF
+  yaml_body        = local.contour_gateway_class_yaml
   wait             = true
   wait_for_rollout = true
 
@@ -242,16 +281,7 @@ locals {
     }
   ]
 
-  envoy_service_lb_ingress_status = (var.enable_cluster_setup ?
-    (data.kubernetes_service.envoy_gateway[0].status != null ?
-      data.kubernetes_service.envoy_gateway[0].status[0].load_balancer[0]["ingress"] : []) : [])
-  envoy_service_external_ip = (length(local.envoy_service_lb_ingress_status) > 0 ?
-    local.envoy_service_lb_ingress_status[0]["ip"] : null)
-}
-
-resource "kubectl_manifest" "default_gateway_cert" {
-  count     = var.enable_cluster_setup && local.gateway_tls_enabled ? 1 : 0
-  yaml_body = <<EOF
+  default_gateway_cert_yaml = <<EOF
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -265,14 +295,8 @@ spec:
   commonName: ${jsonencode(var.default_gateway.tls["commonName"])}
   dnsNames: ${jsonencode(var.default_gateway.tls["dnsNames"])}
 EOF
-  wait      = true
 
-  depends_on = [kubectl_manifest.cluster_issuer_letsencrypt]
-}
-
-resource "kubectl_manifest" "default_gateway" {
-  count            = var.enable_cluster_setup && local.gateway_enabled ? 1 : 0
-  yaml_body        = <<EOF
+  default_gateway_yaml = <<EOF
 kind: Gateway
 apiVersion: gateway.networking.k8s.io/v1
 metadata:
@@ -282,6 +306,25 @@ spec:
   gatewayClassName: contour
   listeners: ${jsonencode(local.gateway_listeners)}
 EOF
+
+  envoy_service_lb_ingress_status = (var.enable_cluster_setup ?
+    (data.kubernetes_service.envoy_gateway[0].status != null ?
+      data.kubernetes_service.envoy_gateway[0].status[0].load_balancer[0]["ingress"] : []) : [])
+  envoy_service_external_ip = (length(local.envoy_service_lb_ingress_status) > 0 ?
+    local.envoy_service_lb_ingress_status[0]["ip"] : null)
+}
+
+resource "kubectl_manifest" "default_gateway_cert" {
+  count     = var.enable_cluster_setup && local.gateway_tls_enabled ? 1 : 0
+  yaml_body = local.default_gateway_cert_yaml
+  wait      = true
+
+  depends_on = [kubectl_manifest.cluster_issuer_letsencrypt]
+}
+
+resource "kubectl_manifest" "default_gateway" {
+  count            = var.enable_cluster_setup && local.gateway_enabled ? 1 : 0
+  yaml_body        = local.default_gateway_yaml
   wait             = true
   wait_for_rollout = true
 
