@@ -61,10 +61,6 @@ module "k8s_cluster" {
   }
 }
 
-output "cluster_gateway_ip" {
-  value = module.k8s_cluster.gateway_external_ip
-}
-
 resource "local_sensitive_file" "cluster_kubeconfig" {
   content = module.k8s_cluster.cluster_kubeconfig
   filename = pathexpand("~/.kube/k8s_cluster_config")
@@ -78,4 +74,10 @@ resource "local_sensitive_file" "node_ssh_private_key" {
 resource "local_file" "node_ssh_public_key" {
   content = module.k8s_cluster.node_public_key
   filename = pathexpand("~/.ssh/k8s_cluster_key.pub")
+}
+
+// ====== Outputs ======
+
+output "cluster_gateway_ip" {
+  value = module.k8s_cluster.gateway_external_ip
 }

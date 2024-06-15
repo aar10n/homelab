@@ -1,4 +1,4 @@
-MANIFEST_DIR = terraform/modules/k8s_cluster/manifests
+MANIFEST_DIR = modules/k8s_cluster/manifests
 
 FLANNEL_VERSION = 0.25.2
 FLANNEL_FILE 	= flannel-cni.yaml
@@ -19,10 +19,8 @@ manifests = flannel-manifest \
 
 download-manifests: $(manifests)
 
-
 # ====== Manifest download rule ======
 %-manifest: VAR = $(shell echo '$*' | tr '[:lower:]' '[:upper:]' | tr - _)
 %-manifest:
 	rm -f $(MANIFEST_DIR)/$($(VAR)_FILE)
 	curl -L $($(VAR)_URL) | awk '!/^\s*#/ && NF' > $(MANIFEST_DIR)/$($(VAR)_FILE)
-
