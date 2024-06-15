@@ -1,4 +1,5 @@
 inventory.ini
+**/vendor/
 
 *.log
 *.env
